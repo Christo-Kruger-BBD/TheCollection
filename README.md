@@ -6,7 +6,10 @@ The Collection aims to be a collection of scripts used frequently in Level-Ups.
 
 - CI/CD
 - Terraform
+- OAuth
 
 ### TODO:
 
-- Add OAuth
+- Nothin'!
+
+If you have suggestions or want something added to this repo, make a PR :)
