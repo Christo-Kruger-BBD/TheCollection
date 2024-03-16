@@ -1,0 +1,74 @@
+name: Build and Release - DB
+
+on:
+  push:
+    branches:
+      - main
+      - 'db/*'
+      - 'cicd/*'
+env:
+  AWS_REGION: "eu-west-1"
+  AWS_IAM_ROLE_ARN: ${{ secrets.AWS_IAM_ROLE_ARN }}
+
+  FLYWAY_LICENSE_KEY: ${{ secrets. FW_LICENSE_KEY }}
+  FW_USER: ${{ secrets.DB_USERNAME }}
+  FW_PASS: ${{ secrets.DB_PASSWORD }}
+  FW_URL: ${{ secrets.JPA_DB_URL }}
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  FlywayMigration:
+    name: Run Flyway Migration
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3.0.0
+
+      - name: Continuous Integration Flyway Clean Migrate
+        run: >-
+          docker run --rm
+          --volume ${{ github.workspace }}/database:/flyway/sql:ro
+          redgate/flyway
+          -licenseKey="${{ env.FLYWAY_LICENSE_KEY }}"
+          -url="${{ env.FW_URL }}"
+          -user="${{ env.FW_USER }}"
+          -password="${{ env.FW_PASS }}" migrate
+
+  ConfigureAwsAndTerraform:
+    needs: FlywayMigration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_IAM_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          audience: sts.amazonaws.com
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        working-directory: "infrastructure"
+        env: 
+          AWS_BUCKET_NAME: ${{ secrets.AWS_BUCKET_NAME }}
+          AWS_BUCKET_KEY_NAME: ${{ secrets.AWS_BUCKET_KEY_NAME }}
+        run: terraform init
+
+      - name: Terraform Validate
+        id: validate
+        working-directory: 'infrastructure'
+        run: terraform validate
+
+      - name: Terraform Plan
+        id: plan
+        working-directory: "infrastructure"
+        run: terraform plan
+
+      - name: Terraform Apply
+        working-directory: infrastructure
+        run: terraform apply -auto-approve

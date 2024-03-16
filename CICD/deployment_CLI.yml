@@ -1,0 +1,68 @@
+name: Build and Release CLI
+
+on:
+  push:
+    branches:
+      - main
+      - 'fe/*'
+      - 'cicd/*'
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build:
+    permissions: write-all
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Set up JDK 11
+      uses: actions/setup-java@v4
+      with:
+        java-version: '21'
+        distribution: 'oracle'
+
+    - name: Test with Maven
+      run: |
+        cd frontend
+        mvn test
+
+    - name: Build with Maven
+      run: |
+        cd frontend
+        mvn clean
+        mvn compile
+        mvn -B package --file pom.xml
+        sudo apt-get install rpm
+        jpackage --input target/ --name beanstalkCLI --main-jar frontend-0.0.1-SNAPSHOT.jar --type deb
+        ls
+      
+    - name: Set Version Tag
+      id: version
+      run: echo "tag=$(date +'%Y.%m.%d.%H%M')" >> $GITHUB_OUTPUT
+
+    - name: release
+      uses: actions/create-release@v1
+      id: create_release
+      with:
+        tag_name: ${{ steps.version.outputs.tag }}
+        release_name: Release - ${{ steps.version.outputs.tag }}
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+
+    - name: Upload Release Asset
+      id: upload-release-asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: frontend/beanstalkcli_1.0_amd64.deb
+        asset_name: beanstalkcli_1.0_amd64.deb
+        asset_content_type: application/vnd.debian.binary-package
